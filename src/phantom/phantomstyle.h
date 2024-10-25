@@ -1,10 +1,10 @@
 #ifndef PHANTOMSTYLE_H
 #define PHANTOMSTYLE_H
 #include <QtWidgets/qcommonstyle.h>
+#define PHANTOM_NO_MOC 1
 
 class PhantomStylePrivate;
 class PhantomStyle : public QCommonStyle {
-  Q_OBJECT
 public:
   PhantomStyle();
   ~PhantomStyle();
