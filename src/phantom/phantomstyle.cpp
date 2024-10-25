@@ -86,24 +86,10 @@ Q_GUI_EXPORT int qt_defaultDpiX();
 QT_END_NAMESPACE
 
 namespace Phantom {
-namespace Tweak {
-const char* const menubar_no_ruler = "_phantom_menubar_no_ruler";
-}
-namespace {
-Q_NEVER_INLINE bool hasTweakTrue(const QObject* object, const char* tweakName) {
-  if (!object)
-    return false;
-  QVariant value = object->property(tweakName);
-  return value.toBool();
-}
-} // namespace
-} // namespace Phantom
-
-namespace Phantom {
 namespace {
 enum {
-  MenuMinimumWidth = 10,  // Smallest width that menu items can have
-  SplitterMaxLength = 25, // Length of splitter handle (not thickness)
+  MenuMinimumWidth = 10,   // Smallest width that menu items can have
+  SplitterMaxLength = 140, // Length of splitter handle (not thickness)
   SpinBox_ButtonWidth = 14,
 
   // These two are currently not based on font, but could be
@@ -112,8 +98,8 @@ enum {
 };
 
 static const qreal TabBarTab_Rounding = 0.0;
-static const qreal SpinBox_Rounding = 0.0;
-static const qreal LineEdit_Rounding = 0.0;
+static const qreal SpinBox_Rounding = 2.0;
+static const qreal LineEdit_Rounding = 1.0;
 static const qreal FrameFocusRect_Rounding = 1.0;
 static const qreal PushButton_Rounding = 2.0;
 static const qreal ToolButton_Rounding = 1.25;
@@ -122,7 +108,7 @@ static const qreal GroupBox_Rounding = 0.0;
 static const qreal SliderGroove_Rounding = 2.0;
 static const qreal SliderHandle_Rounding = 0.0;
 
-static const qreal CheckMark_WidthOfHeightScale = 0.8;
+static const qreal CheckMark_WidthOfHeightScale = 0.7 / 0.8;
 static const qreal PushButton_HorizontalPaddingFontHeightRatio = 1.0 / 2.0;
 static const qreal TabBar_HPaddingFontRatio = 1.25;
 static const qreal TabBar_VPaddingFontRatio = 1.0 / 1.25;
@@ -162,7 +148,7 @@ static const bool ItemView_UseFontHeightForDecorationSize = true;
 // them. Setting this to false adds an extra visual hint for distinguishing
 // between the current and non-current tabs, but makes the non-current tabs
 // appear less clickable. Other ways to increase the visual differences could
-// be to increase the color contrast for the background fill color, or increase
+// be to increase the color contrast for the window fill color, or increase
 // the vertical offset. However, increasing the vertical offset comes with some
 // layout challenges, and increasing the color contrast further may visually
 // imply an incorrect layout structure. Not sure what's best.
@@ -172,6 +158,11 @@ static const bool ItemView_UseFontHeightForDecorationSize = true;
 // of some dynamic config system for Phantom in the future, or have a
 // per-widget style hint associated with it.
 static const bool TabBar_InactiveTabsHaveSpecular = false;
+
+static double dpr(const QWidget* widget) {
+  auto window = widget ? widget->windowHandle() : nullptr;
+  return window ? window->devicePixelRatio() : 1.;
+}
 
 struct Grad {
   Grad(const QColor& from, const QColor& to) {
@@ -280,6 +271,7 @@ enum SwatchColor {
   S_window_divider,
   S_window_lighter,
   S_window_darker,
+  S_button_border,
   S_button_specular,
   S_button_pressed,
   S_button_pressed_specular,
@@ -298,6 +290,10 @@ enum SwatchColor {
   S_itemView_multiSelection_currentBorder,
   S_itemView_headerOnLine,
   S_scrollbarGutter_disabled,
+  S_frame_outline,
+  S_frame_outline_base,
+  S_frame_outline_base_lighter,
+  S_spinbox_base,
 
   // Aliases
   S_progressBar = S_highlight,
@@ -310,7 +306,7 @@ enum SwatchColor {
 using Swatchy = SwatchColors::SwatchColor;
 
 enum {
-  Num_SwatchColors = SwatchColors::S_scrollbarGutter_disabled + 1,
+  Num_SwatchColors = SwatchColors::S_spinbox_base + 1,
   Num_ShadowSteps = 3,
 };
 
@@ -358,8 +354,8 @@ Q_NEVER_INLINE void PhSwatch::loadFromQPalette(const QPalette& pal) {
 
   colors[S_window] = pal.color(QPalette::Window);
   colors[S_button] = pal.color(QPalette::Button);
-  if (colors[S_button] == colors[S_window])
-    colors[S_button] = Dc::adjustLightness(colors[S_button], 0.01);
+  //if (colors[S_button] == colors[S_window])
+  //  colors[S_button] = Dc::adjustLightness(colors[S_button], 0.01);
   colors[S_base] = pal.color(QPalette::Base);
   colors[S_text] = pal.color(QPalette::Text);
   colors[S_windowText] = pal.color(QPalette::WindowText);
@@ -375,9 +371,10 @@ Q_NEVER_INLINE void PhSwatch::loadFromQPalette(const QPalette& pal) {
       Dc::adjustLightness(colors[S_window], isEnabled ? -0.1 : -0.07);
   colors[S_window_specular] =
       isEnabled ? Dc::specularOf(colors[S_window]) : colors[S_window];
-  colors[S_window_divider] = Dc::dividerColor(colors[S_window]);
+  colors[S_window_divider] = Dc::lightShadeOf(colors[S_window]);
   colors[S_window_lighter] = Dc::lightShadeOf(colors[S_window]);
   colors[S_window_darker] = Dc::darkShadeOf(colors[S_window]);
+  colors[S_button_border] = Dc::adjustLightness(colors[S_button], 0.15);
   colors[S_button_specular] =
       isEnabled ? Dc::specularOf(colors[S_button]) : colors[S_button];
   colors[S_button_pressed] = Dc::pressedOf(colors[S_button]);
@@ -401,11 +398,16 @@ Q_NEVER_INLINE void PhSwatch::loadFromQPalette(const QPalette& pal) {
   colors[S_inactiveTabNoFrame_specular] =
       Dc::specularOf(colors[S_inactiveTabNoFrame]);
   colors[S_indicator_current] = Dc::indicatorColorOf(pal, QPalette::Current);
-  colors[S_indicator_disabled] = Dc::indicatorColorOf(pal, QPalette::Disabled);
+  colors[S_indicator_disabled] = Dc::adjustLightness(colors[S_base], 0.35);
   colors[S_itemView_multiSelection_currentBorder] =
       Dc::itemViewMultiSelectionCurrentBorderOf(pal);
   colors[S_itemView_headerOnLine] = Dc::itemViewHeaderOnLineColorOf(pal);
   colors[S_scrollbarGutter_disabled] = colors[S_window];
+  colors[S_frame_outline] = pal.color(QPalette::Light);
+  colors[S_frame_outline_base] = pal.color(QPalette::Midlight);
+  colors[S_frame_outline_base_lighter] =
+      Dc::adjustLightness(colors[S_frame_outline_base], 0.2);
+  colors[S_spinbox_base] = pal.color(QPalette::Mid);
 
   brushes[S_none] = Qt::NoBrush;
   for (int i = S_none + 1; i < Num_SwatchColors; ++i) {
@@ -429,6 +431,7 @@ Q_NEVER_INLINE void PhSwatch::loadFromQPalette(const QPalette& pal) {
   }
 }
 
+#if QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
 // This is the "hash" (not really a hash) function we'll use on the happy fast
 // path when looking up a PhSwatch for a given QPalette. It's fragile, because
 // it uses QPalette::cacheKey(), so it may not match even when the contents
@@ -475,6 +478,9 @@ Q_ALWAYS_INLINE quint64 fastfragile_hash_qpalette(const QPalette& p) {
   return h;
 #endif
 }
+#else
+#define fastfragile_hash_qpalette accurate_hash_qpalette
+#endif
 
 // This hash function is for when we want an actual accurate hash of a
 // QPalette. QPalette's cacheKey() isn't very reliable -- it seems to change to
@@ -489,7 +495,7 @@ uint accurate_hash_qpalette(const QPalette& p) {
   // great hasher anyway.
   QtPrivate::QHashCombine c;
   uint h = qHash(p.currentColorGroup());
-  QPalette::ColorRole const roles[] = {
+  constexpr QPalette::ColorRole const roles[] = {
       QPalette::Window,         QPalette::Button,     QPalette::Base,
       QPalette::Text,           QPalette::WindowText, QPalette::Highlight,
       QPalette::HighlightedText};
@@ -537,7 +543,7 @@ Q_NEVER_INLINE PhSwatchPtr deep_getCachedSwatchOfQPalette(
       ptr.detach();
     }
     ptr->loadFromQPalette(qpalette);
-    cache->prepend(PhCacheEntry(key, ptr));
+    cache->insert(cache->begin(), PhCacheEntry(key, ptr));
     return ptr;
   } else {
     if (idx == 0) {
@@ -548,7 +554,7 @@ Q_NEVER_INLINE PhSwatchPtr deep_getCachedSwatchOfQPalette(
     // want to depend on algorithm or write this myself. Small N with a movable
     // type means it doesn't really matter in this case.
     cache->remove(idx);
-    cache->prepend(e);
+    cache->insert(cache->begin(), e);
     return e.second;
   }
 }
@@ -804,7 +810,7 @@ void progressBarFillRects(
     bool& outIsIndeterminate) {
   QRect ra = bar->rect;
   QRect rb = ra;
-  bool isHorizontal = bar->orientation != Qt::Vertical;
+  bool isHorizontal = bar->state & QStyle::State_Horizontal;
   bool isInverted = bar->invertedAppearance;
   bool isIndeterminate = bar->minimum == 0 && bar->maximum == 0;
   bool isForward = !isHorizontal || bar->direction != Qt::RightToLeft;
@@ -979,9 +985,9 @@ int fontMetricsWidth(const QFontMetrics& fontMetrics, const QString& text) {
 //
 // Expected time (release): 5usecs for regular-sized arrows
 Q_NEVER_INLINE void drawArrow(QPainter* p, QRect rect,
-                              Qt::ArrowType arrowDirection,
-                              const QBrush& brush) {
-  const qreal ArrowBaseRatio = 0.70;
+                              Qt::ArrowType arrowDirection, const QBrush& brush,
+                              bool fill = true) {
+  const qreal ArrowBaseRatio = fill ? 0.70 : 0.60;
   qreal irx, iry, irw, irh;
   QRectF(rect).getRect(&irx, &iry, &irw, &irh);
   if (irw < 1.0 || irh < 1.0)
@@ -1006,41 +1012,53 @@ Q_NEVER_INLINE void drawArrow(QPainter* p, QRect rect,
   case Qt::DownArrow:
     arrowRect.setTop(std::round(arrowRect.top()));
     points[0] = arrowRect.topLeft();
-    points[1] = arrowRect.topRight();
-    points[2] = QPointF(arrowRect.center().x(), arrowRect.bottom());
+    points[1] = QPointF(arrowRect.center().x(), arrowRect.bottom());
+    points[2] = arrowRect.topRight();
     break;
   case Qt::RightArrow: {
     arrowRect.setLeft(std::round(arrowRect.left()));
     points[0] = arrowRect.topLeft();
-    points[1] = arrowRect.bottomLeft();
-    points[2] = QPointF(arrowRect.right(), arrowRect.center().y());
+    points[1] = QPointF(arrowRect.right(), arrowRect.center().y());
+    points[2] = arrowRect.bottomLeft();
     break;
   }
   case Qt::LeftArrow:
     arrowRect.setRight(std::round(arrowRect.right()));
     points[0] = arrowRect.topRight();
-    points[1] = arrowRect.bottomRight();
-    points[2] = QPointF(arrowRect.left(), arrowRect.center().y());
+    points[1] = QPointF(arrowRect.left(), arrowRect.center().y());
+    points[2] = arrowRect.bottomRight();
     break;
   case Qt::UpArrow:
   default:
     arrowRect.setBottom(std::round(arrowRect.bottom()));
     points[0] = arrowRect.bottomLeft();
-    points[1] = arrowRect.bottomRight();
-    points[2] = QPointF(arrowRect.center().x(), arrowRect.top());
+    points[1] = QPointF(arrowRect.center().x(), arrowRect.top());
+    points[2] = arrowRect.bottomRight();
     break;
   }
+
   auto oldPen = p->pen();
   auto oldBrush = p->brush();
   bool oldAA = p->testRenderHint(QPainter::Antialiasing);
-  p->setPen(Qt::NoPen);
-  p->setBrush(brush);
-  if (!oldAA) {
-    p->setRenderHint(QPainter::Antialiasing);
+  if (fill) {
+    p->setPen(Qt::NoPen);
+    p->setBrush(brush);
+    if (!oldAA) {
+      p->setRenderHint(QPainter::Antialiasing);
+    }
+    p->drawConvexPolygon(points, 3);
+  } else {
+    p->setPen(QPen{brush.color(), 1.4});
+    p->setBrush(Qt::NoBrush);
+    if (!oldAA) {
+      p->setRenderHint(QPainter::Antialiasing);
+    }
+    p->drawPolyline(points, 3);
   }
-  p->drawConvexPolygon(points, 3);
+
   p->setPen(oldPen);
   p->setBrush(oldBrush);
+
   if (!oldAA) {
     p->setRenderHint(QPainter::Antialiasing, false);
   }
@@ -1061,7 +1079,17 @@ Q_NEVER_INLINE void drawArrow(QPainter* painter, QRect rect, Qt::ArrowType type,
       painter, rect, type,
       swatch.brush(allowEnabled ? S_indicator_current : S_indicator_disabled));
 }
-
+Q_NEVER_INLINE void drawLineArrow(QPainter* painter, QRect rect,
+                                  Qt::ArrowType type, const PhSwatch& swatch,
+                                  Swatchy active_color, Swatchy disabled_color,
+                                  bool allowEnabled = true) {
+  if (rect.isEmpty())
+    return;
+  using namespace SwatchColors;
+  Phantom::drawArrow(painter, rect, type,
+                     swatch.brush(allowEnabled ? active_color : disabled_color),
+                     false);
+}
 // This draws exactly within the rect provided. If you provide a square rect,
 // it will appear too wide -- you probably want to shrink the width of your
 // square first by multiplying it with CheckMark_WidthOfHeightScale.
@@ -1088,6 +1116,7 @@ Q_NEVER_INLINE void drawCheck(QPainter* painter, QPen& scratchPen,
     pnt.setY(pnt.y() * dimy + y);
     points[i] = pnt;
   }
+
   scratchPen.setBrush(swatch.brush(color));
   scratchPen.setCapStyle(Qt::RoundCap);
   scratchPen.setJoinStyle(Qt::RoundJoin);
@@ -1098,6 +1127,51 @@ Q_NEVER_INLINE void drawCheck(QPainter* painter, QPen& scratchPen,
   painter->setPen(scratchPen);
   painter->setBrush(Qt::NoBrush);
   painter->drawPolyline(points, 3);
+}
+
+Q_NEVER_INLINE void drawCross(QPainter* painter, QPen& scratchPen,
+                              const QRectF& r, const PhSwatch& swatch,
+                              Swatchy color) {
+  using namespace Phantom::SwatchColors;
+  qreal rx, ry, rw, rh;
+  QRectF(r).getRect(&rx, &ry, &rw, &rh);
+  qreal penWidth = 0.15 * qMin(rw, rh);
+  qreal dimx = rw - penWidth;
+  qreal dimy = rh - penWidth;
+  if (dimx < 0.5 || dimy < 0.5)
+    return;
+  qreal x = (rw - dimx) / 2 + rx;
+  qreal y = (rh - dimy) / 2 + ry;
+
+  QPointF line1[2];
+  QPointF line2[2];
+
+  line1[0] = QPointF(0.1, 0.2);
+  line1[1] = QPointF(0.9, 0.9);
+  line2[0] = QPointF(0.1, 0.9);
+  line2[1] = QPointF(0.9, 0.2);
+
+  for (int i = 0; i < 2; ++i) {
+    QPointF pnt = line1[i];
+    pnt.setX(pnt.x() * dimx + x);
+    pnt.setY(pnt.y() * dimy + y);
+    line1[i] = pnt;
+
+    QPointF pnt2 = line2[i];
+    pnt2.setX(pnt2.x() * dimx + x);
+    pnt2.setY(pnt2.y() * dimy + y);
+    line2[i] = pnt2;
+  }
+  scratchPen.setBrush(swatch.brush(color));
+  scratchPen.setCapStyle(Qt::RoundCap);
+  scratchPen.setWidthF(penWidth);
+  Phantom::PSave save(painter);
+  if (!painter->testRenderHint(QPainter::Antialiasing))
+    painter->setRenderHint(QPainter::Antialiasing);
+  painter->setPen(scratchPen);
+  painter->setBrush(Qt::NoBrush);
+  painter->drawLine(line1[0], line1[1]);
+  painter->drawLine(line2[0], line2[1]);
 }
 
 Q_NEVER_INLINE void drawHyphen(QPainter* painter, QPen& scratchPen,
@@ -1396,14 +1470,14 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
   }
   case PE_FrameDockWidget: {
     painter->save();
-    QColor softshadow = option->palette.background().color().darker(120);
+    QColor softshadow = option->palette.window().color().darker(120);
     QRect r = option->rect;
     painter->setPen(softshadow);
     painter->drawRect(r.adjusted(0, 0, -1, -1));
     painter->setPen(QPen(option->palette.light(), 1));
     painter->drawLine(QPoint(r.left() + 1, r.top() + 1),
                       QPoint(r.left() + 1, r.bottom() - 1));
-    painter->setPen(QPen(option->palette.background().color().darker(120)));
+    painter->setPen(QPen(option->palette.window().color().darker(120)));
     painter->drawLine(QPoint(r.left() + 1, r.bottom() - 1),
                       QPoint(r.right() - 2, r.bottom() - 1));
     painter->drawLine(QPoint(r.right() - 1, r.top() + 1),
@@ -1473,7 +1547,7 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
     // We'll also catch State_Selected and treat it equivalently (the way you'd
     // expect.) We'll use windowText instead of text, though -- probably
     // doesn't matter.
-    Swatchy fgColor = S_windowText;
+    Swatchy fgColor = S_frame_outline_base;
     bool isSelected = option->state & (State_Selected | State_On);
     bool isEnabled = option->state & State_Enabled;
     if (isSelected) {
@@ -1595,7 +1669,7 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
     // fully reimplement CC_ToolButton. Note that it passes us a regular
     // QStyleOption and not a QStyleOptionToolButton in this case, so try to
     // save some work before doing the inherits test.
-    if (arrow == Qt::DownArrow &&
+    /*if (arrow == Qt::DownArrow &&
         !(bool)qstyleoption_cast<const QStyleOptionToolButton*>(option) &&
         widget) {
       auto tbutton = qobject_cast<const QToolButton*>(widget);
@@ -1613,7 +1687,8 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
           rx -= 1;
         }
       }
-    }
+    }*/
+    return;
 #endif
     aw += (rw - aw) % 2;
     ah += (rh - ah) % 2;
@@ -1667,10 +1742,10 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
       // TODO replace with new code
       const int margin = 6;
       const int offset = r.height() / 2;
-      painter->setPen(QPen(option->palette.background().color().darker(110)));
+      painter->setPen(QPen(option->palette.window().color().darker(110)));
       painter->drawLine(r.topLeft().x() + margin, r.topLeft().y() + offset,
                         r.topRight().x() - margin, r.topRight().y() + offset);
-      painter->setPen(QPen(option->palette.background().color().lighter(110)));
+      painter->setPen(QPen(option->palette.window().color().lighter(110)));
       painter->drawLine(r.topLeft().x() + margin, r.topLeft().y() + offset + 1,
                         r.topRight().x() - margin,
                         r.topRight().y() + offset + 1);
@@ -1678,30 +1753,6 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
     break;
   }
   case PE_PanelButtonTool: {
-    bool isDown = option->state & State_Sunken;
-    bool isOn = option->state & State_On;
-    bool hasFocus = (option->state & State_HasFocus &&
-                     option->state & State_KeyboardFocusChange);
-    const qreal rounding = Ph::ToolButton_Rounding;
-    Swatchy outline = S_window_outline;
-    Swatchy fill = S_button;
-    Swatchy specular = S_button_specular;
-    if (isDown) {
-      fill = S_button_pressed;
-      specular = S_button_pressed_specular;
-    } else if (isOn) {
-      // kinda repurposing this, hmm
-      fill = S_scrollbarGutter;
-      specular = S_none;
-    }
-    if (hasFocus) {
-      outline = S_highlight_outline;
-    }
-    QRect r = option->rect;
-    Ph::PSave save(painter);
-    Ph::paintBorderedRoundRect(painter, r, rounding, swatch, outline, fill);
-    Ph::paintBorderedRoundRect(painter, r.adjusted(1, 1, -1, -1), rounding,
-                               swatch, specular, S_none);
     break;
   }
   case PE_IndicatorDockWidgetResizeHandle: {
@@ -1719,7 +1770,9 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
     bool hasFocus = option->state & State_HasFocus;
     bool isEnabled = option->state & State_Enabled;
     const qreal rounding = Ph::LineEdit_Rounding;
-    auto pen = hasFocus ? S_highlight_outline : S_window_outline;
+    auto pen = !isEnabled ? S_indicator_disabled
+               : hasFocus ? S_frame_outline
+                          : S_frame_outline_base;
     Ph::PSave save(painter);
     Ph::paintBorderedRoundRect(painter, r, rounding, swatch, pen, S_none);
     save.restore();
@@ -1754,17 +1807,19 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
     if (!checkbox)
       break;
     QRect r = option->rect;
+
     bool isHighlighted = option->state & State_HasFocus &&
                          option->state & State_KeyboardFocusChange;
     bool isSelected = option->state & State_Selected;
     bool isFlat = checkbox->features & QStyleOptionButton::Flat;
     bool isEnabled = option->state & State_Enabled;
     bool isPressed = state & State_Sunken;
-    Swatchy outlineColor =
-        isHighlighted ? S_highlight_outline : S_window_outline;
-    Swatchy bgFillColor = isPressed ? S_highlight : S_base;
-    Swatchy fgColor = isFlat ? S_windowText : S_text;
-    if (isPressed && !isFlat) {
+    Swatchy outlineColor = !isEnabled                   ? S_indicator_disabled
+                           : isHighlighted || isPressed ? S_frame_outline
+                                                        : S_frame_outline_base;
+    Swatchy bgFillColor = isPressed ? S_frame_outline_base : S_base;
+    Swatchy fgColor = S_frame_outline;
+    if (isPressed) { // && !isFlat) {
       fgColor = S_highlightedText;
     }
     // Bare checkmarks that are selected should draw with the highlighted text
@@ -1799,7 +1854,8 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
       qreal dimx = rw * insetScale * Ph::CheckMark_WidthOfHeightScale;
       qreal dimy = rh * insetScale;
       QRectF r_(rx + (rw - dimx) / 2, ry + (rh - dimy) / 2, dimx, dimy);
-      Ph::drawCheck(painter, d->checkBox_pen_scratch, r_, swatch, fgColor);
+      //  Ph::(painter, d->checkBox_pen_scratch, r_, swatch, fgColor);
+      Ph::drawCross(painter, d->checkBox_pen_scratch, r_, swatch, fgColor);
     }
     break;
   }
@@ -1811,8 +1867,8 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
     bool isSunken = state & State_Sunken;
     bool isEnabled = state & State_Enabled;
     Swatchy outlineColor =
-        isHighlighted ? S_highlight_outline : S_window_outline;
-    Swatchy bgFillColor = isSunken ? S_highlight : S_base;
+        isHighlighted ? S_frame_outline : S_frame_outline_base;
+    Swatchy bgFillColor = isSunken ? S_frame_outline : S_base;
     QPointF circleCenter(rx + rw / 2.0, ry + rh / 2.0);
     const qreal lineThickness = 1.0;
     qreal outlineRadius = (qMin(rw, rh) - lineThickness) / 2.0;
@@ -1833,8 +1889,8 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
       painter->drawPath(path2);
     }
     if (state & State_On) {
-      Swatchy fgColor = isSunken ? S_highlightedText : S_windowText;
-      qreal checkmarkRadius = outlineRadius / 2.32;
+      Swatchy fgColor = isSunken ? S_highlight : S_frame_outline;
+      qreal checkmarkRadius = outlineRadius / 2.5;
       painter->setPen(Qt::NoPen);
       painter->setBrush(swatch.brush(fgColor));
       painter->drawEllipse(circleCenter, checkmarkRadius, checkmarkRadius);
@@ -1986,26 +2042,21 @@ void PhantomStyle::drawPrimitive(PrimitiveElement elem,
     Q_UNUSED(isEnabled);
     bool hasFocus = (option->state & State_HasFocus &&
                      option->state & State_KeyboardFocusChange);
-    const qreal rounding = Ph::PushButton_Rounding;
-    Swatchy outline = S_window_outline;
+    const qreal rounding = Ph::LineEdit_Rounding;
+    Swatchy outline = isEnabled ? S_frame_outline_base : S_indicator_disabled;
     Swatchy fill = S_button;
-    Swatchy specular = S_button_specular;
     if (isDown) {
       fill = S_button_pressed;
-      specular = S_button_pressed_specular;
     } else if (isOn) {
       // kinda repurposing this, hmm
       fill = S_scrollbarGutter;
-      specular = S_button_pressed_specular;
     }
     if (hasFocus || isDefault) {
-      outline = S_highlight_outline;
+      outline = S_frame_outline;
     }
     QRect r = option->rect;
     Ph::PSave save(painter);
     Ph::paintBorderedRoundRect(painter, r, rounding, swatch, outline, fill);
-    Ph::paintBorderedRoundRect(painter, r.adjusted(1, 1, -1, -1), rounding,
-                               swatch, specular, S_none);
     break;
   }
   case PE_FrameTabWidget: {
@@ -2162,6 +2213,7 @@ void PhantomStyle::drawControl(ControlElement element,
                              iconRect.size(), editRect);
       if (cb->editable)
         painter->fillRect(iconRect, cb->palette.brush(QPalette::Base));
+
       proxy()->drawItemPixmap(painter, iconRect, Qt::AlignCenter, pixmap);
 
       if (cb->direction == Qt::RightToLeft)
@@ -2186,7 +2238,7 @@ void PhantomStyle::drawControl(ControlElement element,
     if (r.width() < 5 || r.height() < 5)
       break;
     int length = (int)Ph::dpiScaled(Ph::SplitterMaxLength);
-    int thickness = (int)Ph::dpiScaled(1);
+    int thickness = 5; //(int)Ph::dpiScaled(1);
     QSize size;
     if (option->state & State_Horizontal) {
       if (r.height() < length)
@@ -2199,8 +2251,9 @@ void PhantomStyle::drawControl(ControlElement element,
     }
     QRect filledRect =
         QStyle::alignedRect(option->direction, Qt::AlignCenter, size, r);
-    painter->fillRect(filledRect, swatch.color(S_button_specular));
-    Ph::fillRectOutline(painter, filledRect.adjusted(-1, 0, 1, 0), 1,
+    painter->fillRect(filledRect,
+                      swatch.color(S_window_divider)); //S_button_specular));
+    Ph::fillRectOutline(painter, filledRect.adjusted(-1, -1, -1, -1), 1,
                         swatch.color(S_window_divider));
     break;
   }
@@ -2219,7 +2272,7 @@ void PhantomStyle::drawControl(ControlElement element,
     QColor dimHighlight(qMin(highlight.red() / 2 + 110, 255),
                         qMin(highlight.green() / 2 + 110, 255),
                         qMin(highlight.blue() / 2 + 110, 255));
-    dimHighlight.setAlpha(widget && widget->isTopLevel() ? 255 : 80);
+    dimHighlight.setAlpha(widget && widget->isWindow() ? 255 : 80);
     painter->setRenderHint(QPainter::Antialiasing, true);
     painter->translate(0.5, 0.5);
     painter->setBrush(dimHighlight);
@@ -2426,9 +2479,9 @@ void PhantomStyle::drawControl(ControlElement element,
     if (!header->icon.isNull()) {
       int iconExtent =
           qMin(qMin(rect.height(), rect.width()), option->fontMetrics.height());
-      auto window = widget ? widget->window()->windowHandle() : nullptr;
+
       QPixmap pixmap = header->icon.pixmap(
-          window, QSize(iconExtent, iconExtent),
+          QSize(iconExtent, iconExtent), Phantom::dpr(widget),
           (header->state & State_Enabled) ? QIcon::Normal : QIcon::Disabled);
       int pixw = (int)((qreal)pixmap.width() / pixmap.devicePixelRatio());
       QRect aligned =
@@ -2559,7 +2612,7 @@ void PhantomStyle::drawControl(ControlElement element,
     QRect r = bar->rect.adjusted(2, 2, -2, -2);
     if (r.isEmpty() || !r.isValid())
       break;
-    QSize textSize = option->fontMetrics.size(Qt::TextBypassShaping, bar->text);
+    QSize textSize = option->fontMetrics.boundingRect(bar->text).size();
     QRect textRect = QStyle::alignedRect(option->direction, Qt::AlignCenter,
                                          textSize, option->rect);
     textRect &= r;
@@ -2630,12 +2683,6 @@ void PhantomStyle::drawControl(ControlElement element,
                           mbi->state & State_Enabled, mbi->text, textRole);
     if (isSelected)
       break;
-    if (Phantom::hasTweakTrue(widget, Phantom::Tweak::menubar_no_ruler))
-      break;
-    if (!isSelected) {
-      Ph::fillRectEdges(painter, r, Qt::BottomEdge, 1,
-                        swatch.color(S_window_divider));
-    }
     break;
   }
 #endif
@@ -2671,7 +2718,7 @@ void PhantomStyle::drawControl(ControlElement element,
     bool isEnabled = menuItem->state & State_Enabled;
     bool hasSubMenu = menuItem->menuItemType == QStyleOptionMenuItem::SubMenu;
     if (isSelected) {
-      Swatchy fillColor = isSunken ? S_highlight_outline : S_highlight;
+      Swatchy fillColor = S_highlight;
       painter->fillRect(option->rect, swatch.color(fillColor));
     }
 
@@ -2680,20 +2727,25 @@ void PhantomStyle::drawControl(ControlElement element,
       // combo box. Probably a bug in Qt code?
       QRect checkRect = Ph::menuItemCheckRect(metrics, option->direction,
                                               itemRect, hasSubMenu);
-      Swatchy signColor = !isEnabled
-                              ? S_windowText
-                              : isSelected ? S_highlightedText : S_windowText;
+      Swatchy signColor = !isEnabled   ? S_windowText
+                          : isSelected ? S_frame_outline
+                                       : S_windowText;
       if (menuItem->checkType & QStyleOptionMenuItem::Exclusive) {
         // Radio button
         if (isChecked) {
           painter->setRenderHint(QPainter::Antialiasing);
           painter->setPen(Qt::NoPen);
-          QPalette::ColorRole textRole =
-              !isEnabled ? QPalette::Text
-                         : isSelected ? QPalette::HighlightedText
-                                      : QPalette::ButtonText;
-          painter->setBrush(option->palette.brush(
-              option->palette.currentColorGroup(), textRole));
+          if (isSelected) {
+            painter->setBrush(swatch.color(S_frame_outline));
+          } else {
+            QPalette::ColorRole textRole = !isEnabled ? QPalette::Text
+                                           : isSelected
+                                               ? QPalette::HighlightedText
+                                               : QPalette::ButtonText;
+            painter->setBrush(option->palette.brush(
+                option->palette.currentColorGroup(), textRole));
+          }
+
           qreal rx, ry, rw, rh;
           QRectF(checkRect).getRect(&rx, &ry, &rw, &rh);
           qreal dim = (qreal)qMin(checkRect.width(), checkRect.height()) * 0.75;
@@ -2729,15 +2781,15 @@ void PhantomStyle::drawControl(ControlElement element,
       // int smallIconSize =
       //     proxy()->pixelMetric(PM_SmallIconSize, option, widget);
       // QSize iconSize(smallIconSize, smallIconSize);
-      int iconExtent = qMin(iconRect.width(), iconRect.height());
+      int iconExtent = 18; //qMin(iconRect.width(), iconRect.height());
       QSize iconSize(iconExtent, iconExtent);
 #if QT_CONFIG(combobox)
       if (auto combo = qobject_cast<const QComboBox*>(widget)) {
         iconSize = combo->iconSize();
       }
 #endif
-      QWindow* window = widget ? widget->windowHandle() : nullptr;
-      QPixmap pixmap = menuItem->icon.pixmap(window, iconSize, mode, state);
+      QPixmap pixmap =
+          menuItem->icon.pixmap(iconSize, Phantom::dpr(widget), mode, state);
       const int pixw = (int)(pixmap.width() / pixmap.devicePixelRatio());
       const int pixh = (int)(pixmap.height() / pixmap.devicePixelRatio());
       QRect pixmapRect = QStyle::alignedRect(option->direction, Qt::AlignCenter,
@@ -2746,20 +2798,33 @@ void PhantomStyle::drawControl(ControlElement element,
     }
 
     // Draw main text and mnemonic text
-    QStringRef s(&menuItem->text);
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    using ViewType = QStringRef;
+    ViewType s(&menuItem->text);
+#else
+    using ViewType = QStringView;
+    ViewType s(menuItem->text);
+#endif
+
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+    int tabWidth = menuItem->tabWidth;
+#else
+    int tabWidth = menuItem->reservedShortcutWidth;
+#endif
     if (!s.isEmpty()) {
-      QRect textRect =
-          Ph::menuItemTextRect(metrics, option->direction, itemRect, hasSubMenu,
-                               hasIcon, menuItem->tabWidth);
+      QRect textRect = Ph::menuItemTextRect(
+          metrics, option->direction, itemRect, hasSubMenu, hasIcon, tabWidth);
       int t = s.indexOf(QLatin1Char('\t'));
       int text_flags = Qt::AlignLeft | Qt::AlignTop | Qt::TextShowMnemonic |
                        Qt::TextDontClip | Qt::TextSingleLine;
       if (!styleHint(SH_UnderlineShortcut, menuItem, widget))
         text_flags |= Qt::TextHideMnemonic;
-#if 0
-      painter->save();
-#endif
-      painter->setPen(swatch.pen(isSelected ? S_highlightedText : S_text));
+
+      Swatchy text_color = !isEnabled   ? S_indicator_disabled
+                           : isSelected ? S_highlightedText
+                                        : S_text;
+
+      painter->setPen(swatch.pen(text_color));
 
       // Comment from original Qt code which did some dance with the font:
       //
@@ -2821,23 +2886,18 @@ void PhantomStyle::drawControl(ControlElement element,
 
       // Draw mnemonic text
       if (t >= 0) {
-        QRect mnemonicR =
-            Ph::menuItemMnemonicRect(metrics, option->direction, itemRect,
-                                     hasSubMenu, menuItem->tabWidth);
-        const QStringRef textToDrawRef = s.mid(t + 1);
+        QRect mnemonicR = Ph::menuItemMnemonicRect(
+            metrics, option->direction, itemRect, hasSubMenu, tabWidth);
+        const ViewType textToDrawRef = s.mid(t + 1);
         const QString unsafeTextToDraw = QString::fromRawData(
             textToDrawRef.constData(), textToDrawRef.size());
         painter->drawText(mnemonicR, text_flags, unsafeTextToDraw);
         s = s.left(t);
       }
-      const QStringRef textToDrawRef = s.left(t);
+      const ViewType textToDrawRef = s.left(t);
       const QString unsafeTextToDraw =
           QString::fromRawData(textToDrawRef.constData(), textToDrawRef.size());
       painter->drawText(textRect, text_flags, unsafeTextToDraw);
-
-#if 0
-      painter->restore();
-#endif
     }
 
     // SubMenu Arrow
@@ -2846,7 +2906,7 @@ void PhantomStyle::drawControl(ControlElement element,
           option->direction == Qt::RightToLeft ? Qt::LeftArrow : Qt::RightArrow;
       QRect arrowRect =
           Ph::menuItemArrowRect(metrics, option->direction, itemRect);
-      Swatchy arrowColor = isSelected ? S_highlightedText : S_indicator_current;
+      Swatchy arrowColor = isSelected ? S_frame_outline : S_indicator_current;
       Ph::drawArrow(painter, arrowRect, arrow, swatch.brush(arrowColor));
     }
     painter->restore();
@@ -2861,7 +2921,24 @@ void PhantomStyle::drawControl(ControlElement element,
     auto btn = qstyleoption_cast<const QStyleOptionButton*>(option);
     if (!btn)
       break;
-    proxy()->drawControl(CE_PushButtonBevel, btn, painter, widget);
+
+    bool hasFocus = btn->state & State_HasFocus;
+    bool isEnabled = btn->state & State_Enabled;
+    bool isSunken = btn->state & State_Sunken;
+    bool isOn = btn->state & State_On;
+    bool hover = btn->state & State_MouseOver;
+
+    //  proxy()->drawControl(CE_PushButtonBevel, btn, painter, widget);
+    const qreal rounding = Ph::PushButton_Rounding;
+    Swatchy borderColor = !isEnabled         ? S_indicator_disabled
+                          : isSunken         ? S_frame_outline
+                          : isOn || hasFocus ? S_frame_outline_base_lighter
+                          : hover            ? S_frame_outline_base
+                                             : S_button_border;
+    Swatchy fillColor = isSunken ? S_frame_outline_base : S_button;
+    Ph::paintBorderedRoundRect(painter, btn->rect, rounding, swatch,
+                               borderColor, fillColor);
+
     QStyleOptionButton subopt = *btn;
     subopt.rect = subElementRect(SE_PushButtonContents, btn, widget);
     proxy()->drawControl(CE_PushButtonLabel, &subopt, painter, widget);
@@ -2883,9 +2960,9 @@ void PhantomStyle::drawControl(ControlElement element,
       QIcon::Mode mode =
           button->state & State_Enabled ? QIcon::Normal : QIcon::Disabled;
       QIcon::State state = button->state & State_On ? QIcon::On : QIcon::Off;
-      auto window = widget ? widget->window()->windowHandle() : nullptr;
-      QPixmap pixmap =
-          button->icon.pixmap(window, button->iconSize, mode, state);
+
+      QPixmap pixmap = button->icon.pixmap(button->iconSize,
+                                           Phantom::dpr(widget), mode, state);
       int pixmapWidth =
           (int)((qreal)pixmap.width() / pixmap.devicePixelRatio());
       int pixmapHeight =
@@ -2916,10 +2993,11 @@ void PhantomStyle::drawControl(ControlElement element,
     } else {
       tf |= Qt::AlignHCenter;
     }
-    if (button->state & (State_On | State_Sunken))
+    /* if (button->state & (State_On | State_Sunken))
       textRect.translate(
           proxy()->pixelMetric(PM_ButtonShiftHorizontal, option, widget),
           proxy()->pixelMetric(PM_ButtonShiftVertical, option, widget));
+   */
     if (button->features & QStyleOptionButton::HasMenu) {
       int indicatorSize =
           proxy()->pixelMetric(PM_MenuButtonIndicator, button, widget);
@@ -2928,18 +3006,15 @@ void PhantomStyle::drawControl(ControlElement element,
       else
         textRect = textRect.adjusted(indicatorSize, 0, 0, 0);
     }
+
+    bool isSunken = button->state & State_Sunken | button->state & State_On;
+
     proxy()->drawItemText(painter, textRect, tf, button->palette,
                           (button->state & State_Enabled), button->text,
-                          QPalette::ButtonText);
+                          isSunken ? QPalette::Light : QPalette::ButtonText);
     break;
   }
   case CE_MenuBarEmptyArea: {
-    if (Phantom::hasTweakTrue(widget, Phantom::Tweak::menubar_no_ruler))
-      break;
-    QRect rect = option->rect;
-    Ph::fillRectEdges(painter, rect, Qt::BottomEdge, 1,
-                      swatch.color(S_window_divider));
-    painter->fillRect(rect.adjusted(0, 0, 0, -1), swatch.color(S_window));
     break;
   }
 #if QT_CONFIG(tabbar)
@@ -3198,17 +3273,25 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
       QRect upDownRect = upRect | downRect;
       upDownRect.adjust(0, -1, 0, 1);
       painter->save(); // 0
-      // Fill background
-      Ph::paintBorderedRoundRect(painter, rect, rounding, swatch, S_none,
-                                 S_base);
+      // Fill window
+      Ph::paintBorderedRoundRect(painter, rect, rounding, swatch,
+                                 !isEnabled           ? S_indicator_disabled
+                                 : hasFocus || sunken ? S_frame_outline
+                                                      : S_frame_outline_base,
+                                 !isEnabled           ? S_indicator_disabled
+                                 : hasFocus || sunken ? S_frame_outline
+                                                      : S_frame_outline_base);
       // Draw button fill
-      painter->setClipRect(upDownRect);
+      /*   painter->setClipRect(upDownRect);
       // Side with the border
       Qt::Edge edge = isLeftToRight ? Qt::LeftEdge : Qt::RightEdge;
       Ph::paintBorderedRoundRect(
           painter, Ph::expandRect(upDownRect, Ph::oppositeEdge(edge), -1),
-          rounding, swatch, S_none, S_button);
+          rounding, swatch, S_none, S_frame_outline_base);
+          */
+
       painter->restore(); // 0
+      /*
       if (Ph::OverhangShadows && !hasFocus && isEnabled) {
         // Imperfect, leaves tiny gap on left and right. Going closer would eat
         // into the outline, though.
@@ -3220,25 +3303,28 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
           shadowRect.setLeft(upDownRect.right());
         }
         Ph::fillRectEdges(painter, shadowRect, Qt::TopEdge, 1,
-                          swatch.color(S_base_shadow));
+                          swatch.color(S_spinbox_base));
       }
-      if ((spinBox->stepEnabled & QAbstractSpinBox::StepUpEnabled) &&
+     if ((spinBox->stepEnabled & QAbstractSpinBox::StepUpEnabled) &&
           upIsActive && sunken) {
-        painter->fillRect(upRect, swatch.color(S_button_pressed));
+          painter->fillRect(upRect, swatch.color(S_frame_outline));
       }
       if ((spinBox->stepEnabled & QAbstractSpinBox::StepDownEnabled) &&
           downIsActive && sunken) {
-        painter->fillRect(downRect, swatch.color(S_button_pressed));
+        painter->fillRect(downRect, swatch.color(S_frame_outline));
       }
       // Left or right border line
       Ph::fillRectEdges(painter, upDownRect, edge, 1,
                         swatch.color(S_window_outline));
+
       Ph::PSave save(painter);
       // Outline over entire frame
-      Swatchy outlineColor = hasFocus ? S_highlight_outline : S_window_outline;
+      Swatchy outlineColor = hasFocus ? S_frame_outline : S_frame_outline_base;
       Ph::paintBorderedRoundRect(painter, rect, rounding, swatch, outlineColor,
-                                 S_none);
+                                 S_spinbox_base);
+
       save.restore();
+      */
     }
 
     if (spinBox->buttonSymbols == QAbstractSpinBox::PlusMinus) {
@@ -3263,12 +3349,17 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
       painter->drawLine(centerX - 1, centerY, centerX + 3, centerY);
     } else if (spinBox->buttonSymbols == QAbstractSpinBox::UpDownArrows) {
       int xoffs = isLeftToRight ? 0 : 1;
-      Ph::drawArrow(painter, upRect.adjusted(4 + xoffs, 1, -5 + xoffs, 1),
-                    Qt::UpArrow, swatch,
-                    spinBox->stepEnabled & QAbstractSpinBox::StepUpEnabled);
-      Ph::drawArrow(painter, downRect.adjusted(4 + xoffs, 0, -5 + xoffs, -1),
-                    Qt::DownArrow, swatch,
-                    spinBox->stepEnabled & QAbstractSpinBox::StepDownEnabled);
+      Ph::drawLineArrow(painter, upRect.adjusted(4 + xoffs, 1, -5 + xoffs, 1),
+                        Qt::UpArrow, swatch,
+                        upIsActive && hasFocus ? S_highlightedText : S_base,
+                        S_indicator_disabled,
+                        spinBox->stepEnabled & QAbstractSpinBox::StepUpEnabled);
+      Ph::drawLineArrow(
+          painter, downRect.adjusted(4 + xoffs, 0, -5 + xoffs, -1),
+          Qt::DownArrow, swatch,
+          downIsActive && hasFocus ? S_highlightedText : S_base,
+          S_indicator_disabled,
+          spinBox->stepEnabled & QAbstractSpinBox::StepDownEnabled);
     }
     break;
   }
@@ -3287,16 +3378,15 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
 
     QColor titleBarFrameBorder(active ? highlight.darker(180)
                                       : outline.darker(110));
-    QColor titleBarHighlight(active
-                                 ? highlight.lighter(120)
-                                 : palette.background().color().lighter(120));
+    QColor titleBarHighlight(active ? highlight.lighter(120)
+                                    : palette.window().color().lighter(120));
     QColor textColor(active ? 0xffffff : 0xff000000);
     QColor textAlphaColor(active ? 0xffffff : 0xff000000);
 
     {
       // Fill title
       QColor titlebarColor =
-          QColor(active ? highlight : palette.background().color());
+          QColor(active ? highlight : palette.window().color());
       painter->fillRect(option->rect.adjusted(1, 1, -1, 0), titlebarColor);
       // Frame and rounded corners
       painter->setPen(titleBarFrameBorder);
@@ -3695,13 +3785,13 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
     if (scrollBar->subControls & SC_ScrollBarSlider) {
       Swatchy thumbFill, thumbSpecular;
       if (isSunken && scrollBar->activeSubControls & SC_ScrollBarSlider) {
-        thumbFill = S_button_pressed;
+        thumbFill = S_frame_outline;
         thumbSpecular = S_button_pressed_specular;
       } else if (hasRange) {
-        thumbFill = S_button;
+        thumbFill = S_indicator_current;
         thumbSpecular = S_button_specular;
       } else {
-        thumbFill = S_window;
+        thumbFill = S_indicator_current;
         thumbSpecular = S_none;
       }
       Qt::Edges edges;
@@ -3723,6 +3813,7 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
       }
       Ph::fillRectEdges(painter, edgeRect, edges, 1,
                         swatch.color(S_window_outline));
+
       painter->fillRect(mainRect, swatch.color(thumbFill));
       if (thumbSpecular) {
         Ph::fillRectOutline(painter, mainRect, 1, swatch.color(thumbSpecular));
@@ -3779,6 +3870,7 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
         arrowType = Qt::UpArrow;
       }
       int adj = qMin(bgRect.width(), bgRect.height()) / 4;
+
       Ph::drawArrow(painter, bgRect.adjusted(adj, adj, -adj, -adj), arrowType,
                     swatch, hasRange);
     }
@@ -3834,8 +3926,9 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
       break;
     painter->save();
     bool isLeftToRight = option->direction != Qt::RightToLeft;
-    bool hasFocus = option->state & State_HasFocus &&
-                    option->state & State_KeyboardFocusChange;
+    bool isEnabled = option->state & State_Enabled;
+    bool hasFocus = option->state & State_HasFocus; // &&
+        // option->state & State_KeyboardFocusChange;
     bool isSunken = comboBox->state & State_Sunken;
     QRect rect = comboBox->rect;
     QRect downArrowRect = proxy()->subControlRect(CC_ComboBox, comboBox,
@@ -3869,7 +3962,9 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
           br.setRight(fr.left() - 1);
         }
         Qt::Edge edge = isLeftToRight ? Qt::LeftEdge : Qt::RightEdge;
-        Swatchy color = hasFocus ? S_highlight_outline : S_window_outline;
+        Swatchy color = !isEnabled ? S_indicator_disabled
+                        : hasFocus ? S_frame_outline
+                                   : S_frame_outline_base;
         br.adjust(0, 1, 0, -1);
         Ph::fillRectEdges(painter, br, edge, 1, swatch.color(color));
         br.adjust(1, 0, -1, 0);
@@ -3904,7 +3999,10 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
       QRect r = downArrowRect;
       r.adjust(margin, margin, -margin, -margin);
       // Draw the up/down arrow
-      Ph::drawArrow(painter, r, Qt::DownArrow, swatch);
+      Ph::drawLineArrow(painter, r, Qt::DownArrow, swatch,
+                        hasFocus || isSunken ? S_frame_outline
+                                             : S_frame_outline_base,
+                        S_indicator_disabled, comboBox->state & State_Enabled);
     }
     painter->restore();
     break;
@@ -3924,7 +4022,7 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
     Swatchy outlineColor = S_window_outline;
     if (option->state & State_HasFocus &&
         option->state & State_KeyboardFocusChange)
-      outlineColor = S_highlight_outline;
+      outlineColor = S_frame_outline;
     if ((option->subControls & SC_SliderGroove) && groove.isValid()) {
       QRect g0 = groove;
       if (g0.height() > 5)
@@ -4004,7 +4102,7 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
       Swatchy handleOutline, handleFill, handleSpecular;
       if (option->state & State_HasFocus &&
           option->state & State_KeyboardFocusChange) {
-        handleOutline = S_highlight_outline;
+        handleOutline = S_frame_outline;
       } else {
         handleOutline = S_window_outline;
       }
@@ -4017,7 +4115,7 @@ void PhantomStyle::drawComplexControl(ComplexControl control,
       }
       Ph::PSave save(painter);
       Ph::paintBorderedRoundRect(painter, r, Ph::SliderHandle_Rounding, swatch,
-                                 handleOutline, handleFill);
+                                 S_frame_outline, handleFill);
       r.adjust(1, 1, -1, -1);
       Ph::paintBorderedRoundRect(painter, r, Ph::SliderHandle_Rounding, swatch,
                                  handleSpecular, S_none);
@@ -4094,7 +4192,9 @@ int PhantomStyle::pixelMetric(PixelMetric metric, const QStyleOption* option,
   case PM_MessageBoxIconSize:
     val = 48;
     break;
+#if QT_DEPRECATED_SINCE(6, 8)
   case PM_DialogButtonsSeparator:
+#endif
   case PM_ScrollBarSliderMin:
     val = 26;
     break;
@@ -4217,6 +4317,8 @@ int PhantomStyle::pixelMetric(PixelMetric metric, const QStyleOption* option,
     break;
   case PM_IndicatorHeight:
   case PM_IndicatorWidth:
+    val = 12;
+    break;
   case PM_ExclusiveIndicatorHeight:
   case PM_ExclusiveIndicatorWidth:
     if (option)
@@ -4449,8 +4551,12 @@ QSize PhantomStyle::sizeFromContents(ContentsType type,
     bool nullIcon = hdr->icon.isNull();
     int margin = proxy()->pixelMetric(QStyle::PM_HeaderMargin, hdr, widget);
     int iconSize = nullIcon ? 0 : option->fontMetrics.height();
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     QSize txt = hdr->fontMetrics.size(
         Qt::TextSingleLine | Qt::TextBypassShaping, hdr->text);
+#else
+    QSize txt = hdr->fontMetrics.size(0, hdr->text);
+#endif
     QSize sz;
     sz.setHeight(margin + qMax(iconSize, txt.height()) + margin);
     sz.setWidth((nullIcon ? 0 : margin) + iconSize +
@@ -4553,6 +4659,7 @@ void PhantomStyle::polish(QApplication* app) { QCommonStyle::polish(app); }
 
 void PhantomStyle::polish(QWidget* widget) {
   QCommonStyle::polish(widget);
+  widget->setAttribute(Qt::WA_Hover, true);
   // Leaving this code here to debug/remove hover stuff if necessary
 #if 0
   if (false
@@ -4977,7 +5084,9 @@ int PhantomStyle::styleHint(StyleHint hint, const QStyleOption* option,
   case SH_PrintDialog_RightAlignButtons:
   case SH_FontDialog_SelectAssociatedText:
   case SH_ComboBox_ListMouseTracking:
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
   case SH_ScrollBar_StopMouseOverSlider:
+#endif
   case SH_ScrollBar_MiddleClickAbsolutePosition:
   case SH_TitleBar_AutoRaise:
   case SH_TitleBar_NoBorder:
@@ -4985,6 +5094,7 @@ int PhantomStyle::styleHint(StyleHint hint, const QStyleOption* option,
   case SH_ItemView_ChangeHighlightOnFocus:
   case SH_MenuBar_MouseTracking:
   case SH_Menu_MouseTracking:
+  case SH_ItemView_ActivateItemOnSingleClick:
     return 1;
   case SH_Menu_SupportsSections:
     return 0;
@@ -5112,6 +5222,8 @@ int PhantomStyle::styleHint(StyleHint hint, const QStyleOption* option,
   }
   case SH_Widget_Animate:
     return 0;
+  case SH_Slider_AbsoluteSetButtons:
+    return Qt::AllButtons;
   default:
     break;
   }
@@ -5181,9 +5293,7 @@ QRect PhantomStyle::subElementRect(SubElement sr, const QStyleOption* opt,
 // However, they will still need to deal with the Q_OBJECT macro in the header.
 // Easiest way is to probably keep your own copy of the header without the
 // macro in it. (If there's a smarter way to do this, please let me know.)
-#ifndef PHANTOM_NO_MOC
-#include "moc_phantomstyle.cpp"
-#endif
+
 
 // Table header layout reference
 // -----------------------------
